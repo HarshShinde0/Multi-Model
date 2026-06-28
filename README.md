@@ -66,7 +66,7 @@ Generates an image from a prompt, performs CLIP/BLIP analysis, and extracts SAM2
 ```bash
 curl -X POST http://127.0.0.1:8000/generate \
   -H 'Content-Type: application/json' \
-  -d '{"prompt":"a red kite flying over a coastal cliff", "image_size": 512}'
+  -d '{"prompt":"a red bird flying over a coastal cliff", "image_size": 512}'
 ```
 
 Response schema follows the structure in [example_generate_response.json](examples/example_generate_response.json).
