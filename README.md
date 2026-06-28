@@ -2,101 +2,133 @@
 
 Generate images from text descriptions using Stable Diffusion, analyze them using CLIP and BLIP, and perform instance segmentation using Meta's Segment Anything Model 2 (SAM2).
 
-## Hardware Setup
+## Hardware Setup & Environment Installation
 
-This project is optimized for the following high-performance architecture:
-- **CPU:** Intel(R) Xeon(R) Platinum 8559C
-- **RAM:** 124 GB
-- **GPU:** NVIDIA RTX PRO 6000 Blackwell Server Edition
+This project supports both **GPU (CUDA)** and **CPU** execution configurations.
 
-### Installation (GPU Only)
+### 1. Conda Environment Setup
 
-1. Navigate to the project and activate your environment:
+Ensure Conda is installed, and create/activate the workspace environment:
 ```bash
-cd text-to-image-multimodel-analysis
+conda create -n deeplearning python=3.10 -y
 conda activate deeplearning
 ```
 
-2. Install dependencies:
+### 2. Dependency Installation
+
+#### Option A: GPU (CUDA-accelerated) Setup (Recommended)
+This configuration leverages NVIDIA CUDA acceleration for high-performance inference.
 ```bash
 pip install -r requirements.txt
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 ```
 
-3. Download Models:
-Run the download script to fetch Stable Diffusion, SAM2, CLIP, and BLIP:
+#### Option B: CPU-Only Setup
+This configuration runs all inference workloads on the CPU (suitable for testing or systems without NVIDIA GPUs).
+```bash
+pip install -r requirements.txt
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+```
+
+### 3. Model Weight Downloads
+Run the download script to pre-fetch and cache model weights (Stable Diffusion v1.5, SAM2, CLIP, and BLIP):
 ```bash
 python download_models.py
 ```
 
+---
+
 ## Running the Application
 
-Start the FastAPI server:
+### 1. Run via Uvicorn Server Locally
+Start the FastAPI application:
 ```bash
 cd src
 python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
+Then visit `http://127.0.0.1:8000/` in your browser to launch the **Multimodel Studio UI**.
 
-### Browser UI
-Open `http://127.0.0.1:8000/` in your browser for a fully interactive Multi-Model Studio UI. You can generate images, analyze uploads, and view segmentation masks directly.
+### 2. Run via Docker
+To run inside a containerized setup, a basic Docker configuration is provided.
+```bash
+docker build -t tti-multimodel-analysis .
+docker run -p 8000:8000 tti-multimodel-analysis
+```
 
-### UI Previews
-
-Below are visual examples of the Multimodel Studio interface in action:
-
-#### 1. Image Generation (Stable Diffusion)
-<img src="examples/generate.png" width="450" alt="Stable Diffusion Generation">
-
-#### 2. Image Analysis (CLIP & BLIP)
-<img src="examples/clip.png" width="450" alt="CLIP/BLIP Analysis">
-
-#### 3. Instance Segmentation (SAM2)
-<img src="examples/sam2.png" width="450" alt="SAM2 Segmentation">
-
-#### 4. Download Preview Asset
-<img src="examples/image.png" width="450" alt="Downloaded Image">
+---
 
 ## API Documentation
 
 ### 1. Generate Image (`POST /generate`)
-Generates an image from a prompt, performs CLIP/BLIP analysis, and extracts SAM2 segmentation masks.
+Generates an image from a prompt, performs CLIP/BLIP classification, and extracts SAM2 segmentation masks. Supports both Basic and Extended formats.
 
-**Example Request:**
-```bash
-curl -X POST http://127.0.0.1:8000/generate \
-  -H 'Content-Type: application/json' \
-  -d '{"prompt":"a red kite flying over a coastal cliff", "image_size": 512}'
+* **Request Payload:**
+```json
+{
+  "prompt": "a red kite flying over a coastal cliff",
+  "image_size": 512
+}
 ```
-
-Response schema follows the structure in [example_generate_response.json](examples/example_generate_response.json).
+* **Response Details:** Follows the schema in [example_generate_response.json](examples/example_generate_response.json) (populates both basic `concepts`/`basic_segmentation` and extended `global_concepts`/`segmentation`).
 
 ### 2. Analyze Image (`POST /analyze`)
-Analyzes an existing image using CLIP and BLIP, and runs SAM2 segmentation.
+Analyzes an uploaded image with CLIP classification and BLIP captions.
 
-**Example Request:**
-```bash
-curl -X POST http://127.0.0.1:8000/analyze \
-  -H 'Content-Type: application/json' \
-  -d '{"image_base64":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "prompt":"coastal, cliff"}'
+* **Request Payload:**
+```json
+{
+  "image_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  "prompt": "coastal, cliff"
+}
 ```
-
-Response schema follows the structure in [example_clip_response.json](examples/example_clip_response.json).
+* **Response Details:** Follows the schema in [example_clip_response.json](examples/example_clip_response.json).
 
 ### 3. Segment Image (`POST /segment`)
-Performs SAM2 segmentation on an uploaded image, returning masks and regions of interest.
+Performs SAM2 segmentation. Supports dynamic parameter controls for segmentation thresholds.
 
-**Example Request:**
-```bash
-curl -X POST http://127.0.0.1:8000/segment \
-  -H 'Content-Type: application/json' \
-  -d '{"image_base64":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="}'
+* **Request Payload:**
+```json
+{
+  "image_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  "points_per_side": 32,
+  "pred_iou_thresh": 0.88,
+  "stability_score_thresh": 0.95,
+  "crop_n_layers": 0
+}
 ```
+* **Response Details:** Follows the schema in [example_segment_response.json](examples/example_segment_response.json) (includes detailed boundary contour polygons, crop boxes, and region image clips).
 
-Response schema follows the structure in [example_sam2_response.json](examples/example_sam2_response.json).
+### 4. Concept Probing (`POST /probe`)
+Runs CLIP concept probing relative to custom-defined concepts across the global image and each segmented sub-region.
 
-*Note: The base64 string in the examples above represents a minimal 1x1 black pixel PNG image, which you can use to quickly test the endpoints.*
+* **Request Payload:**
+```json
+{
+  "image_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  "concepts": ["red square", "circle", "sky", "grass"]
+}
+```
+* **Response Details:** Follows the schema in [example_probe_response.json](examples/example_probe_response.json).
+
+### 5. Advanced Visualization (`POST /visualize`)
+Generates visual representation overlays for segmentation boundaries.
+
+* **Request Payload:**
+```json
+{
+  "image_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  "visualization_type": "overlay",
+  "alpha": 0.4,
+  "line_thickness": 2
+}
+```
+* **Response Details:** Follows the schema in [example_visualize_response.json](examples/example_visualize_response.json).
+
+---
 
 ## Model Configurations
-- **Generation:** Uses `runwayml/stable-diffusion-v1-5` configured for half-precision (`float16`) to fit in GPU VRAM and uses CUDA.
-- **Analysis:** Uses `openai/clip-vit-base-patch32` for zero-shot concept classification, alongside `Salesforce/blip-image-captioning-base` for natural language summarization.
-- **Segmentation:** Uses `sam2.1_hiera_base_plus` (Meta SAM2) for instance segmentation.
+
+- **Image Generation:** `runwayml/stable-diffusion-v1-5` (configured dynamically for half-precision `float16` when running on CUDA-capable GPUs).
+- **Text & Image Classification:** `openai/clip-vit-base-patch32` (runs zero-shot similarity scores).
+- **Caption Summary:** `Salesforce/blip-image-captioning-base`.
+- **Instance Segmentation:** `sam2.1_hiera_base_plus` (uses OpenCV contours to reconstruct detailed boundary coordinate polygons).

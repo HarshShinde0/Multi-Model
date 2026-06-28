@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
 
 from core.config import get_settings
-from schemas import AnalyzeRequest, GenerateRequest, SegmentRequest
+from schemas import AnalyzeRequest, GenerateRequest, ProbeRequest, SegmentRequest, VisualizeRequest
 from services.pipeline import Pipeline
 
+logger = logging.getLogger("api")
 router = APIRouter()
 pipeline = Pipeline(get_settings())
 settings = get_settings()
@@ -441,6 +443,50 @@ UI_HTML = """
                         <button id="analyzeBtn" class="secondary" type="button">Run CLIP/BLIP Analysis</button>
                         <button id="segmentBtn" class="secondary" type="button">Run SAM2 Segmentation</button>
                     </div>
+
+                    <details style="margin-top: 16px; border: 1px solid var(--border); padding: 12px; border-radius: 6px;">
+                        <summary style="cursor: pointer; font-family: 'Space Mono', monospace; font-size: 0.8rem; color: var(--muted);">Advanced SAM2 Settings</summary>
+                        <div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                            <div>
+                                <label for="pointsPerSide">Points Per Side</label>
+                                <input id="pointsPerSide" type="number" min="4" max="64" value="32" style="padding: 6px; font-size: 0.85rem;" />
+                            </div>
+                            <div>
+                                <label for="predIouThresh">IoU Thresh</label>
+                                <input id="predIouThresh" type="number" min="0" max="1" step="0.05" value="0.88" style="padding: 6px; font-size: 0.85rem;" />
+                            </div>
+                            <div>
+                                <label for="stabilityThresh">Stability Thresh</label>
+                                <input id="stabilityThresh" type="number" min="0" max="1" step="0.05" value="0.95" style="padding: 6px; font-size: 0.85rem;" />
+                            </div>
+                            <div>
+                                <label for="cropLayers">Crop Layers</label>
+                                <input id="cropLayers" type="number" min="0" max="4" value="0" style="padding: 6px; font-size: 0.85rem;" />
+                            </div>
+                        </div>
+                    </details>
+
+                    <h2 style="margin-top: 30px;">Visualization & Probing</h2>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                        <div>
+                            <label for="vizType">Viz Type</label>
+                            <select id="vizType" style="width: 100%; border-radius: 6px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); padding: 12px 14px; font-family: inherit; font-size: 0.95rem;">
+                                <option value="overlay">Overlay + Contours</option>
+                                <option value="contour">Contours Only</option>
+                                <option value="bbox">Bounding Boxes</option>
+                                <option value="isolate">Isolate Segments</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="vizAlpha">Opacity (Alpha)</label>
+                            <input id="vizAlpha" type="number" min="0" max="1" step="0.1" value="0.4" style="padding: 12px 14px;" />
+                        </div>
+                    </div>
+                    <button id="vizBtn" class="secondary" type="button" style="width: 100%; margin-bottom: 20px;">Generate Visualization</button>
+
+                    <label for="probeConcepts">Concept Probing (Comma Separated)</label>
+                    <textarea id="probeConcepts" style="min-height: 60px; margin-bottom: 12px;" placeholder="e.g. grass, sky, bird, kite, rock"></textarea>
+                    <button id="probeBtn" class="secondary" type="button" style="width: 100%;">Probe Custom Concepts</button>
                 </div>
 
                 <div class="preview">
@@ -491,36 +537,96 @@ UI_HTML = """
             function showAnalyzeOutput(data) {
                 output.style.display = 'none';
                 fancyOutput.style.display = 'block';
+                fancyOutput.replaceChildren(); // Safe clear
                 
-                let html = `<div style="margin-bottom: 20px;">
-                    <div class="score-label" style="color: var(--muted); margin-bottom: 4px;">BEST MATCH</div>
-                    <span style="font-size: 1.4rem; font-weight: 700; color: var(--cyan);">${data.best_match}</span>
-                </div>`;
+                // Best match section
+                const bmDiv = document.createElement('div');
+                bmDiv.style.marginBottom = '20px';
                 
+                const bmLbl = document.createElement('div');
+                bmLbl.className = 'score-label';
+                bmLbl.style.color = 'var(--muted)';
+                bmLbl.style.marginBottom = '4px';
+                bmLbl.textContent = 'BEST MATCH';
+                bmDiv.appendChild(bmLbl);
+                
+                const bmVal = document.createElement('span');
+                bmVal.style.fontSize = '1.4rem';
+                bmVal.style.fontWeight = '700';
+                bmVal.style.color = 'var(--cyan)';
+                bmVal.textContent = data.best_match;
+                bmDiv.appendChild(bmVal);
+                
+                fancyOutput.appendChild(bmDiv);
+                
+                // Summary section
                 if (data.summary) {
-                    html += `<div style="margin-bottom: 24px;">
-                        <div class="score-label" style="color: var(--muted); margin-bottom: 6px;">NATURAL LANGUAGE SUMMARY</div>
-                        <p style="margin: 0; font-size: 0.95rem; line-height: 1.5; color: #fff;">${data.summary}</p>
-                    </div>`;
+                    const sumDiv = document.createElement('div');
+                    sumDiv.style.marginBottom = '24px';
+                    
+                    const sumLbl = document.createElement('div');
+                    sumLbl.className = 'score-label';
+                    sumLbl.style.color = 'var(--muted)';
+                    sumLbl.style.marginBottom = '6px';
+                    sumLbl.textContent = 'NATURAL LANGUAGE SUMMARY';
+                    sumDiv.appendChild(sumLbl);
+                    
+                    const sumVal = document.createElement('p');
+                    sumVal.style.margin = '0';
+                    sumVal.style.fontSize = '0.95rem';
+                    sumVal.style.lineHeight = '1.5';
+                    sumVal.style.color = '#fff';
+                    sumVal.textContent = data.summary;
+                    sumDiv.appendChild(sumVal);
+                    
+                    fancyOutput.appendChild(sumDiv);
                 }
                 
-                html += `<div class="score-label" style="color: var(--muted); margin-bottom: 12px;">CONCEPT CONFIDENCE SCORES</div>`;
+                const scoresLbl = document.createElement('div');
+                scoresLbl.className = 'score-label';
+                scoresLbl.style.color = 'var(--muted)';
+                scoresLbl.style.marginBottom = '12px';
+                scoresLbl.textContent = 'CONCEPT CONFIDENCE SCORES';
+                fancyOutput.appendChild(scoresLbl);
                 
                 const sorted = Object.entries(data.scores).sort((a, b) => b[1] - a[1]);
                 for (const [label, score] of sorted) {
                     const pct = (score * 100).toFixed(1);
-                    html += `
-                    <div class="score-row">
-                        <div style="display:flex; justify-content:space-between">
-                            <span style="font-family: 'Space Mono', monospace; font-size: 0.85rem;">${label}</span>
-                            <span style="color: var(--cyan); font-family: 'Space Mono', monospace; font-size: 0.85rem;">${pct}%</span>
-                        </div>
-                        <div class="score-bar">
-                            <div class="score-fill" style="width: ${pct}%"></div>
-                        </div>
-                    </div>`;
+                    
+                    const row = document.createElement('div');
+                    row.className = 'score-row';
+                    
+                    const info = document.createElement('div');
+                    info.style.display = 'flex';
+                    info.style.justifyContent = 'space-between';
+                    
+                    const lblSpan = document.createElement('span');
+                    lblSpan.style.fontFamily = "'Space Mono', monospace";
+                    lblSpan.style.fontSize = '0.85rem';
+                    lblSpan.textContent = label;
+                    
+                    const pctSpan = document.createElement('span');
+                    pctSpan.style.color = 'var(--cyan)';
+                    pctSpan.style.fontFamily = "'Space Mono', monospace";
+                    pctSpan.style.fontSize = '0.85rem';
+                    pctSpan.textContent = pct + '%';
+                    
+                    info.appendChild(lblSpan);
+                    info.appendChild(pctSpan);
+                    row.appendChild(info);
+                    
+                    const bar = document.createElement('div');
+                    bar.className = 'score-bar';
+                    
+                    const fill = document.createElement('div');
+                    fill.className = 'score-fill';
+                    fill.style.width = pct + '%';
+                    
+                    bar.appendChild(fill);
+                    row.appendChild(bar);
+                    
+                    fancyOutput.appendChild(row);
                 }
-                fancyOutput.innerHTML = html;
             }
 
             function showImage(base64) {
@@ -532,7 +638,7 @@ UI_HTML = """
             }
             
             function renderGallery(regions) {
-                gallery.innerHTML = '';
+                gallery.replaceChildren();
                 if (!regions || regions.length === 0) return;
                 
                 regions.forEach((region, i) => {
@@ -541,7 +647,17 @@ UI_HTML = """
                     const img = document.createElement('img');
                     img.src = `data:image/png;base64,${region.image_base64}`;
                     img.title = `Click to view region ${i+1}`;
-                    img.onclick = () => showImage(region.image_base64);
+                    img.onclick = () => {
+                        showImage(region.image_base64);
+                        if (region.clip_analysis && region.clip_analysis.confidence_scores) {
+                            const data = {
+                                best_match: (region.clip_analysis.global_concepts && region.clip_analysis.global_concepts[0]) || 'Unknown',
+                                scores: region.clip_analysis.confidence_scores,
+                                summary: `Region ${i+1} bounding box: ${JSON.stringify(region.bbox)}.\nPolygon vertices: ${region.polygon.length}`
+                            };
+                            showAnalyzeOutput(data);
+                        }
+                    };
                     
                     const span = document.createElement('span');
                     span.textContent = `Region ${i+1}`;
@@ -553,7 +669,7 @@ UI_HTML = """
             }
             
             function renderMasks(masks) {
-                maskGallery.innerHTML = '';
+                maskGallery.replaceChildren();
                 if (!masks || masks.length === 0) {
                     maskPreviewBox.style.display = 'none';
                     return;
@@ -599,7 +715,7 @@ UI_HTML = """
 
             document.getElementById('generateBtn').addEventListener('click', async () => {
                 showOutput('Generating image via Stable Diffusion...');
-                gallery.innerHTML = '';
+                gallery.replaceChildren();
                 maskPreviewBox.style.display = 'none';
                 const response = await fetch('/generate', {
                     method: 'POST',
@@ -623,7 +739,7 @@ UI_HTML = """
                     return;
                 }
                 showOutput('Running CLIP classifications & BLIP captions...');
-                gallery.innerHTML = '';
+                gallery.replaceChildren();
                 maskPreviewBox.style.display = 'none';
                 const image_base64 = await fileToBase64(file);
                 const response = await fetch('/analyze', {
@@ -652,13 +768,25 @@ UI_HTML = """
                     showOutput('Choose a source image first.');
                     return;
                 }
-                showOutput('Extracting segments via SAM2...');
-                gallery.innerHTML = '';
+                showOutput('Extracting segments via SAM2 with settings...');
+                gallery.replaceChildren();
                 const image_base64 = await fileToBase64(file);
+                
+                const points_per_side = document.getElementById('pointsPerSide').value ? Number(document.getElementById('pointsPerSide').value) : null;
+                const pred_iou_thresh = document.getElementById('predIouThresh').value ? Number(document.getElementById('predIouThresh').value) : null;
+                const stability_score_thresh = document.getElementById('stabilityThresh').value ? Number(document.getElementById('stabilityThresh').value) : null;
+                const crop_n_layers = document.getElementById('cropLayers').value ? Number(document.getElementById('cropLayers').value) : null;
+                
                 const response = await fetch('/segment', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ image_base64 }),
+                    body: JSON.stringify({
+                        image_base64,
+                        points_per_side,
+                        pred_iou_thresh,
+                        stability_score_thresh,
+                        crop_n_layers
+                    }),
                 });
                 const body = await response.json();
                 
@@ -671,10 +799,18 @@ UI_HTML = """
                     if (displayBody.segmentation.segmented_regions) {
                         displayBody.segmentation.segmented_regions.forEach(r => r.image_base64 = '<base64...>');
                     }
+                    if (displayBody.segmentation.overlay_image) {
+                        displayBody.segmentation.overlay_image = '<base64...>';
+                    }
                 }
                 
                 showOutput(displayBody);
-                showImage(image_base64);
+                
+                if (body.segmentation && body.segmentation.overlay_image) {
+                    showImage(body.segmentation.overlay_image);
+                } else {
+                    showImage(image_base64);
+                }
                 
                 if (body.segmentation && body.segmentation.masks) {
                     renderMasks(body.segmentation.masks);
@@ -682,6 +818,143 @@ UI_HTML = """
                 
                 if (body.segmentation && body.segmentation.segmented_regions) {
                     renderGallery(body.segmentation.segmented_regions);
+                }
+            });
+
+            document.getElementById('vizBtn').addEventListener('click', async () => {
+                const file = imageInput.files && imageInput.files[0];
+                if (!file && !currentImageBase64) {
+                    showOutput('Choose a source image or run generation first.');
+                    return;
+                }
+                showOutput('Generating advanced visualization overlay...');
+                
+                let image_base64 = currentImageBase64;
+                if (file) {
+                    image_base64 = await fileToBase64(file);
+                }
+                
+                const visualization_type = document.getElementById('vizType').value;
+                const alpha = Number(document.getElementById('vizAlpha').value);
+                
+                const response = await fetch('/visualize', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        image_base64,
+                        visualization_type,
+                        alpha,
+                        line_thickness: 2
+                    }),
+                });
+                const body = await response.json();
+                showOutput(body);
+                if (body.visualization_image) {
+                    showImage(body.visualization_image);
+                }
+            });
+
+            document.getElementById('probeBtn').addEventListener('click', async () => {
+                const file = imageInput.files && imageInput.files[0];
+                if (!file && !currentImageBase64) {
+                    showOutput('Choose a source image or run generation first.');
+                    return;
+                }
+                const conceptsText = document.getElementById('probeConcepts').value.trim();
+                if (!conceptsText) {
+                    showOutput('Please enter some concepts to probe.');
+                    return;
+                }
+                
+                const concepts = conceptsText.split(',').map(c => c.trim()).filter(c => c.length > 0);
+                if (concepts.length === 0) {
+                    showOutput('Please enter at least one valid concept.');
+                    return;
+                }
+                
+                showOutput('Running concept probing on global image and individual regions...');
+                
+                let image_base64 = currentImageBase64;
+                if (file) {
+                    image_base64 = await fileToBase64(file);
+                }
+                
+                const response = await fetch('/probe', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ image_base64, concepts }),
+                });
+                const body = await response.json();
+                
+                // Show raw JSON output first
+                showOutput(body);
+                
+                // Render a beautiful interactive table for probing results
+                if (body.global_scores && body.regional_scores) {
+                    output.style.display = 'none';
+                    fancyOutput.style.display = 'block';
+                    fancyOutput.replaceChildren();
+                    
+                    const h3 = document.createElement('h3');
+                    h3.textContent = 'Concept Probing Results';
+                    fancyOutput.appendChild(h3);
+                    
+                    const table = document.createElement('table');
+                    table.style.width = '100%';
+                    table.style.borderCollapse = 'collapse';
+                    table.style.marginTop = '12px';
+                    table.style.fontSize = '0.85rem';
+                    table.style.fontFamily = "'Space Mono', monospace";
+                    
+                    const header = document.createElement('tr');
+                    header.style.borderBottom = '1px solid var(--border)';
+                    header.style.textAlign = 'left';
+                    
+                    const thConcept = document.createElement('th');
+                    thConcept.style.padding = '8px';
+                    thConcept.textContent = 'Concept';
+                    header.appendChild(thConcept);
+                    
+                    const thGlobal = document.createElement('th');
+                    thGlobal.style.padding = '8px';
+                    thGlobal.textContent = 'Global';
+                    header.appendChild(thGlobal);
+                    
+                    body.regional_scores.forEach(reg => {
+                        const thReg = document.createElement('th');
+                        thReg.style.padding = '8px';
+                        thReg.textContent = reg.region_id;
+                        header.appendChild(thReg);
+                    });
+                    table.appendChild(header);
+                    
+                    concepts.forEach(concept => {
+                        const tr = document.createElement('tr');
+                        tr.style.borderBottom = '1px solid rgba(255,255,255,0.02)';
+                        
+                        const tdConcept = document.createElement('td');
+                        tdConcept.style.padding = '8px';
+                        tdConcept.textContent = concept;
+                        tr.appendChild(tdConcept);
+                        
+                        const tdGlobal = document.createElement('td');
+                        tdGlobal.style.padding = '8px';
+                        tdGlobal.style.color = 'var(--cyan)';
+                        const gScore = body.global_scores[concept] !== undefined ? (body.global_scores[concept] * 100).toFixed(1) + '%' : '0.0%';
+                        tdGlobal.textContent = gScore;
+                        tr.appendChild(tdGlobal);
+                        
+                        body.regional_scores.forEach(reg => {
+                            const tdReg = document.createElement('td');
+                            tdReg.style.padding = '8px';
+                            const rScore = reg.scores[concept] !== undefined ? (reg.scores[concept] * 100).toFixed(1) + '%' : '0.0%';
+                            tdReg.textContent = rScore;
+                            tr.appendChild(tdReg);
+                        });
+                        table.appendChild(tr);
+                    });
+                    
+                    fancyOutput.appendChild(table);
                 }
             });
         </script>
@@ -702,29 +975,115 @@ async def home() -> HTMLResponse:
 
 @router.post("/generate")
 async def generate(request: GenerateRequest):
-    return await asyncio.wait_for(
-        run_in_threadpool(pipeline.generate, request.prompt, request.image_size),
-        timeout=settings.api_timeout_seconds,
-    )
+    logger.info(f"Endpoint /generate triggered with prompt: '{request.prompt}', size: {request.image_size}")
+    try:
+        res = await asyncio.wait_for(
+            run_in_threadpool(pipeline.generate, request.prompt, request.image_size),
+            timeout=settings.api_timeout_seconds,
+        )
+        logger.info("Generation and basic analysis successfully finished")
+        return res
+    except asyncio.TimeoutError as exc:
+        logger.error("Generation request timed out")
+        raise HTTPException(status_code=504, detail="Request timed out") from exc
+    except Exception as exc:
+        logger.error(f"Generation error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/analyze")
 async def analyze(request: AnalyzeRequest):
+    logger.info("Endpoint /analyze triggered")
     try:
-        return await asyncio.wait_for(
+        res = await asyncio.wait_for(
             run_in_threadpool(pipeline.analyze, request.image_base64, request.prompt),
             timeout=settings.api_timeout_seconds,
         )
+        logger.info("CLIP analysis and basic segmentation successfully finished")
+        return res
+    except asyncio.TimeoutError as exc:
+        logger.error("Analysis request timed out")
+        raise HTTPException(status_code=504, detail="Request timed out") from exc
     except ValueError as exc:
+        logger.error(f"Validation/parsing error during analysis: {exc}")
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error(f"Analysis error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/segment")
 async def segment(request: SegmentRequest):
+    logger.info(f"Endpoint /segment triggered with settings: points_per_side={request.points_per_side}")
     try:
-        return await asyncio.wait_for(
-            run_in_threadpool(pipeline.segment, request.image_base64),
+        res = await asyncio.wait_for(
+            run_in_threadpool(
+                pipeline.segment,
+                image_base64=request.image_base64,
+                points_per_side=request.points_per_side,
+                pred_iou_thresh=request.pred_iou_thresh,
+                stability_score_thresh=request.stability_score_thresh,
+                crop_n_layers=request.crop_n_layers,
+                box_nms_thresh=request.box_nms_thresh,
+            ),
             timeout=settings.api_timeout_seconds,
         )
+        logger.info("Segmentation successfully finished")
+        return res
+    except asyncio.TimeoutError as exc:
+        logger.error("Segmentation request timed out")
+        raise HTTPException(status_code=504, detail="Request timed out") from exc
     except ValueError as exc:
+        logger.error(f"Validation/parsing error during segmentation: {exc}")
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error(f"Segmentation error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/probe")
+async def probe(request: ProbeRequest):
+    logger.info(f"Endpoint /probe triggered for concepts: {request.concepts}")
+    try:
+        res = await asyncio.wait_for(
+            run_in_threadpool(pipeline.probe, request.image_base64, request.concepts),
+            timeout=settings.api_timeout_seconds,
+        )
+        logger.info("Concept probing successfully finished")
+        return res
+    except asyncio.TimeoutError as exc:
+        logger.error("Probing request timed out")
+        raise HTTPException(status_code=504, detail="Request timed out") from exc
+    except ValueError as exc:
+        logger.error(f"Validation/parsing error during concept probing: {exc}")
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error(f"Concept probing error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/visualize")
+async def visualize(request: VisualizeRequest):
+    logger.info(f"Endpoint /visualize triggered with type: {request.visualization_type}")
+    try:
+        res = await asyncio.wait_for(
+            run_in_threadpool(
+                pipeline.visualize,
+                request.image_base64,
+                request.visualization_type,
+                request.alpha,
+                request.line_thickness,
+            ),
+            timeout=settings.api_timeout_seconds,
+        )
+        logger.info("Visualization successfully finished")
+        return res
+    except asyncio.TimeoutError as exc:
+        logger.error("Visualization request timed out")
+        raise HTTPException(status_code=504, detail="Request timed out") from exc
+    except ValueError as exc:
+        logger.error(f"Validation/parsing error during visualization: {exc}")
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error(f"Visualization error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

@@ -52,12 +52,16 @@ class ClipAnalyzer:
             if pc not in global_concepts:
                 global_concepts.append(pc)
                 
-        regional_analysis = self._regional_analysis(regions or [], image, all_concepts)
+        regional_analysis = self._regional_analysis(regions or [], all_concepts)
         
         # Generate image summary
         summary = self._generate_summary(image)
         
         return AnalysisResult(global_concepts, confidence_scores, regional_analysis, summary)
+
+    def probe_concepts(self, image: Image.Image, concepts: list[str]) -> dict[str, float]:
+        """Probe image for custom concepts and return confidence scores."""
+        return self._calculate_batch_scores(image, concepts)
 
     def _generate_summary(self, image: Image.Image) -> str:
         """Generate a short summary description of the image."""
@@ -107,10 +111,16 @@ class ClipAnalyzer:
                     ordered.append(item)
         return ordered
 
-    def _regional_analysis(self, regions: Sequence[dict[str, Any]], image: Image.Image, all_concepts: list[str]) -> list[dict[str, Any]]:
+    def _regional_analysis(self, regions: Sequence[dict[str, Any]], all_concepts: list[str]) -> list[dict[str, Any]]:
+        from services.image_utils import base64_to_image
         results: list[dict[str, Any]] = []
         for index, region in enumerate(regions):
-            confidence_scores = self._calculate_batch_scores(image, all_concepts)
+            try:
+                region_img = base64_to_image(region["image_base64"])
+                confidence_scores = self._calculate_batch_scores(region_img, all_concepts)
+            except Exception:
+                confidence_scores = {concept: 0.0 for concept in all_concepts}
+            
             top_concepts = sorted(confidence_scores.items(), key=lambda x: x[1], reverse=True)
             region_concepts = [c for c, _ in top_concepts[:3]]
             

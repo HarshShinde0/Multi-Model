@@ -1,0 +1,21 @@
+{
+  "request_id": "b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
+  "global_scores": {
+    "a red square": 0.98,
+    "a circle": 0.01,
+    "sky": 0.0,
+    "grass": 0.01
+  },
+  "regional_scores": [
+    {
+      "region_id": "region-1",
+      "polygon": [[10, 10], [12, 10], [15, 12], [20, 20], [10, 20]],
+      "scores": {
+        "a red square": 0.99,
+        "a circle": 0.0,
+        "sky": 0.0,
+        "grass": 0.01
+      }
+    }
+  ]
+}
