@@ -8,6 +8,7 @@ This project is optimized for the following high-performance architecture:
 - **CPU:** Intel(R) Xeon(R) Platinum 8559C
 - **RAM:** 124 GB
 - **GPU:** NVIDIA RTX PRO 6000 Blackwell Server Edition
+- **VRAM:** 96 GB
 
 ### Installation (GPU Only)
 
