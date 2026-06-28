@@ -1,0 +1,38 @@
+{
+  "request_id": "a902bfce-4c12-4217-ba5c-8902c3ef32f3",
+  "generated_image": "<base64_encoded_png_image>",
+  "clip_analysis": {
+    "global_concepts": [
+      "a red kite flying over a coastal cliff",
+      "a colorful scene",
+      "a landscape"
+    ],
+    "confidence_scores": {
+      "a photo": 0.15,
+      "a clear image": 0.05,
+      "a colorful scene": 0.28,
+      "a landscape": 0.24,
+      "a red kite flying over a coastal cliff": 0.89
+    },
+    "summary": "A high-altitude shot of a red kite soaring over coastal cliffs under a bright sky.",
+    "regional_analysis": []
+  },
+  "basic_segmentation": {
+    "masks": [
+      "<base64_encoded_png_mask_1>",
+      "<base64_encoded_png_mask_2>"
+    ],
+    "polygons": [
+      [[15, 15], [15, 30], [30, 30], [30, 15]],
+      [[60, 60], [60, 120], [120, 120], [120, 60]]
+    ],
+    "segmented_regions": [
+      {
+        "region_id": "region-1",
+        "polygon": [[15, 15], [15, 30], [30, 30], [30, 15]],
+        "image_base64": "<base64_encoded_cropped_image>",
+        "clip_analysis": {}
+      }
+    ]
+  }
+}

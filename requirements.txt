@@ -1,0 +1,27 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.8
+pydantic-settings>=2.4
+pillow>=10.4
+numpy<2.0.0
+
+# development
+pytest>=8.3
+httpx>=0.27
+
+# Core ML dependencies
+torch>=2.0
+torchvision>=0.15.0
+
+# Stable Diffusion - Image Generation
+diffusers>=0.25
+transformers>=4.35
+accelerate>=0.24
+safetensors>=0.4
+
+# CLIP - Image Analysis
+# (included via transformers package)
+
+# Segment Anything Model 2 - Image Segmentation
+segment-anything>=1.0
+opencv-python>=4.8
